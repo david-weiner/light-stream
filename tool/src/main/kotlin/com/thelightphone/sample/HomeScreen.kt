@@ -19,6 +19,7 @@ import com.thelightphone.sdk.SealedLightActivity
 import com.thelightphone.sdk.rememberKeyboardOptions
 import com.thelightphone.sdk.ui.LightBarButton
 import com.thelightphone.sdk.ui.LightBottomBar
+import com.thelightphone.sdk.ui.LightIcons
 import com.thelightphone.sdk.ui.LightTextField
 import com.thelightphone.sdk.ui.LightTextInputEditor
 import com.thelightphone.sdk.ui.LightText
@@ -26,8 +27,10 @@ import com.thelightphone.sdk.ui.LightTextVariant
 import com.thelightphone.sdk.ui.LightTheme
 import com.thelightphone.sdk.ui.LightThemeController
 import com.thelightphone.sdk.ui.LightThemeTokens
+import com.thelightphone.sdk.ui.LightTopBar
 import com.thelightphone.sample.subsonic.SubsonicClient
 import com.thelightphone.sample.subsonic.SubsonicClientLoginResult
+import com.thelightphone.sample.subsonic.SubsonicCredentials
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +43,8 @@ enum class EditingField { USERNAME, PASSWORD }
 
 sealed class LoginUiState {
     data object CheckingStoredLogin : LoginUiState()
+
+    data class ChooseEntryMethod(val errorMessage: String? = null) : LoginUiState()
 
     data class LoginForm(
         val editing: EditingField? = null,
@@ -65,10 +70,38 @@ class HomeScreenViewModel(
             withContext(Dispatchers.Main) {
                 _state.value = when (result) {
                     is SubsonicClientLoginResult.Success -> LoginUiState.LoggedIn(result.username)
-                    SubsonicClientLoginResult.NoStoredLogin -> LoginUiState.LoginForm()
+                    SubsonicClientLoginResult.NoStoredLogin -> LoginUiState.ChooseEntryMethod()
                 }
             }
         }
+    }
+
+    fun chooseManualEntry() {
+        _state.value = LoginUiState.LoginForm()
+    }
+
+    fun backToEntryChoice() {
+        _state.value = LoginUiState.ChooseEntryMethod()
+    }
+
+    fun logout() {
+        viewModelScope.launch(Dispatchers.IO) {
+            subsonicClient.logout()
+            withContext(Dispatchers.Main) {
+                _state.value = LoginUiState.ChooseEntryMethod()
+            }
+        }
+    }
+
+    fun onQrScanResult(result: Result<SubsonicCredentials>) {
+        result.fold(
+            onSuccess = { credentials -> attemptLogin(credentials.username, credentials.password) },
+            onFailure = { error ->
+                _state.value = LoginUiState.ChooseEntryMethod(
+                    errorMessage = error.message ?: "Couldn't read that QR code.",
+                )
+            },
+        )
     }
 
     fun beginEditingUsername() = updateForm { it.copy(editing = EditingField.USERNAME, errorMessage = null) }
@@ -92,17 +125,22 @@ class HomeScreenViewModel(
             updateForm { it.copy(errorMessage = "Enter a username and password.") }
             return
         }
+        attemptLogin(username, password)
+    }
 
-        updateForm { it.copy(isSubmitting = true, errorMessage = null) }
+    private fun attemptLogin(username: String, password: String) {
+        _state.value = LoginUiState.LoginForm(username = username, password = password, isSubmitting = true)
         viewModelScope.launch(Dispatchers.IO) {
             val result = subsonicClient.login(username, password)
             withContext(Dispatchers.Main) {
                 result.fold(
                     onSuccess = { _state.value = LoginUiState.LoggedIn(username) },
                     onFailure = { error ->
-                        updateForm {
-                            it.copy(isSubmitting = false, errorMessage = error.message ?: "Login failed.")
-                        }
+                        _state.value = LoginUiState.LoginForm(
+                            username = username,
+                            password = password,
+                            errorMessage = error.message ?: "Login failed.",
+                        )
                     },
                 )
             }
@@ -157,6 +195,59 @@ class HomeScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, HomeSc
                     }
                 }
 
+                is LoginUiState.ChooseEntryMethod -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(LightThemeTokens.colors.background),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                        ) {
+                            LightText(
+                                text = "Light Stream",
+                                variant = LightTextVariant.Heading,
+                                modifier = Modifier.padding(bottom = 16.dp),
+                            )
+                            LightText(
+                                text = "Log in with your Bandcamp Fan Settings streaming username and password.",
+                                variant = LightTextVariant.Detail,
+                                lighten = true,
+                                modifier = Modifier.padding(bottom = 24.dp),
+                            )
+                            LightText(
+                                text = "Scan a pairing code from another device, or type the two strings in by hand.",
+                                variant = LightTextVariant.Detail,
+                                lighten = true,
+                            )
+                            mode.errorMessage?.let {
+                                LightText(
+                                    text = it,
+                                    variant = LightTextVariant.Detail,
+                                    modifier = Modifier.padding(top = 16.dp),
+                                )
+                            }
+                        }
+
+                        LightBottomBar(
+                            items = listOf(
+                                LightBarButton.Text(text = "MANUAL ENTRY", onClick = viewModel::chooseManualEntry),
+                                LightBarButton.Text(
+                                    text = "SCAN QR",
+                                    onClick = {
+                                        navigateTo(screenFactory = { QrLoginScreen(it) }) { result ->
+                                            viewModel.onQrScanResult(result)
+                                        }
+                                    },
+                                ),
+                            ),
+                        )
+                    }
+                }
+
                 is LoginUiState.LoginForm -> {
                     val editingField = mode.editing
                     if (editingField != null) {
@@ -178,6 +269,12 @@ class HomeScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, HomeSc
                                 .fillMaxSize()
                                 .background(LightThemeTokens.colors.background),
                         ) {
+                            LightTopBar(
+                                leftButton = LightBarButton.LightIcon(
+                                    icon = LightIcons.BACK,
+                                    onClick = viewModel::backToEntryChoice,
+                                ),
+                            )
                             Column(
                                 modifier = Modifier
                                     .weight(1f)
@@ -239,17 +336,31 @@ class HomeScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, HomeSc
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(LightThemeTokens.colors.background)
-                            .padding(32.dp),
+                            .background(LightThemeTokens.colors.background),
                     ) {
-                        LightText(
-                            text = "Light Stream",
-                            variant = LightTextVariant.Heading,
-                            modifier = Modifier.padding(bottom = 16.dp),
-                        )
-                        LightText(
-                            text = "Logged in as ${mode.username}",
-                            variant = LightTextVariant.Copy,
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                        ) {
+                            LightText(
+                                text = "Light Stream",
+                                variant = LightTextVariant.Heading,
+                                modifier = Modifier.padding(bottom = 16.dp),
+                            )
+                            LightText(
+                                text = "Logged in as ${mode.username}",
+                                variant = LightTextVariant.Copy,
+                            )
+                        }
+
+                        LightBottomBar(
+                            items = listOf(
+                                null,
+                                LightBarButton.Text(text = "LOG OUT", onClick = viewModel::logout),
+                                null,
+                            ),
                         )
                     }
                 }

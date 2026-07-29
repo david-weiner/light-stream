@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>light-stream — Pair with Bandcamp</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root {
+    --ink: #111;
+    --paper: #fafafa;
+    --line: #ccc;
+    --muted: #666;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  main {
+    width: 100%;
+    max-width: 420px;
+    padding: 48px 24px 64px;
+  }
+  h1 {
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin: 0 0 4px;
+  }
+  p.sub {
+    color: var(--muted);
+    font-size: 13px;
+    margin: 0 0 32px;
+    line-height: 1.5;
+  }
+  label {
+    display: block;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin: 20px 0 6px;
+  }
+  input {
+    width: 100%;
+    padding: 10px 12px;
+    font-family: inherit;
+    font-size: 14px;
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    background: #fff;
+    color: var(--ink);
+  }
+  input:focus {
+    outline: none;
+    border-color: var(--ink);
+  }
+  button {
+    width: 100%;
+    margin-top: 28px;
+    padding: 12px;
+    font-family: inherit;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+  }
+  button:disabled {
+    background: var(--line);
+    cursor: not-allowed;
+  }
+  #qr-wrap {
+    margin-top: 32px;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+  }
+  #qr-wrap.show { display: flex; }
+  #qr {
+    padding: 16px;
+    background: #fff;
+    border: 1px solid var(--line);
+  }
+  .warning {
+    margin-top: 24px;
+    padding: 12px 14px;
+    border: 1px solid var(--ink);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--ink);
+  }
+  .warning strong { display: block; margin-bottom: 4px; }
+  footer {
+    margin-top: 40px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Pair light-stream with Bandcamp</h1>
+  <p class="sub">
+    Paste your Subsonic username and password from
+    bandcamp.com/settings?pane=fan, then scan the code with the
+    light-stream login screen. Nothing here is sent anywhere — the code
+    is drawn in your browser only.
+  </p>
+
+  <label for="user">Subsonic username</label>
+  <input id="user" type="text" autocomplete="off" spellcheck="false">
+
+  <label for="pass">Subsonic password</label>
+  <input id="pass" type="text" autocomplete="off" spellcheck="false">
+
+  <button id="generate">Generate QR code</button>
+
+  <div id="qr-wrap">
+    <div id="qr"></div>
+    <div class="warning">
+      <strong>Don't screenshot or share this.</strong>
+      Anyone who sees it has your Bandcamp login. Scan it, then close
+      or reload this page.
+    </div>
+  </div>
+
+  <footer>
+    Runs entirely in this browser tab. Reloading or closing the page
+    clears everything — nothing is saved or transmitted.
+  </footer>
+</main>
+
+<script>
+  const userInput = document.getElementById('user');
+  const passInput = document.getElementById('pass');
+  const button = document.getElementById('generate');
+  const qrWrap = document.getElementById('qr-wrap');
+  const qrEl = document.getElementById('qr');
+  let qrcode = null;
+
+  button.addEventListener('click', () => {
+    const user = userInput.value.trim();
+    const pass = passInput.value.trim();
+    if (!user || !pass) return;
+
+    // Format must match the parser in light-stream's QR login screen.
+    const payload = JSON.stringify({ username: user, password: pass });
+
+    qrEl.innerHTML = '';
+    qrcode = new QRCode(qrEl, {
+      text: payload,
+      width: 240,
+      height: 240,
+      colorDark: '#111111',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+    qrWrap.classList.add('show');
+  });
+</script>
+</body>
+</html>

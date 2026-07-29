@@ -41,6 +41,12 @@ fast right now.
 `sdk/`, `plugin/`, or `gradle/` unless necessary — those are SDK internals, and
 touching them increases the odds of a conflict on the next sync.
 
+**One deliberate exception:** `web/` — static, non-Android files meant to be
+deployed to a URL rather than compiled (e.g. `web/pair.html`, the Bandcamp
+credential-pairing page — see docs/ARCHITECTURE.md). These don't belong in
+`tool/` since they're not part of the app build at all, and keeping them
+separate means the Gradle build never has to know they exist.
+
 ## Authenticating with GitHub Packages
 
 Pick one:
@@ -73,6 +79,20 @@ configured to approximate the Light Phone III:
 A more complete LightOS emulator (for testing push notifications and other
 OS-level behavior) is available but more involved to set up — worth doing once
 a basic build is running, not before. See Light's own docs for that.
+
+## Building from the command line
+
+Android Studio bundles its own JDK for Gradle, so this normally doesn't come
+up inside the IDE. But if you run `./gradlew` directly from a terminal, make
+sure `JAVA_HOME` points at a **JDK 17** install, not whatever your system
+default is. A too-new JDK (JDK 26 has been observed to fail) breaks the
+Android Gradle Plugin's `core-for-system-modules.jar` transform with a jlink
+error, unrelated to anything in this project's own code:
+
+```
+export JAVA_HOME=/path/to/your/jdk-17
+./gradlew :tool:compileDebugKotlin
+```
 
 ## Known platform constraints to keep in mind
 

@@ -29,6 +29,10 @@ class SubsonicClient(dataStore: DataStore<Preferences>) {
         return result
     }
 
+    suspend fun logout() {
+        credentialStore.clear()
+    }
+
     fun close() {
         api.close()
     }

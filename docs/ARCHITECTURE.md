@@ -61,10 +61,73 @@ For the Subsonic client specifically:
   attempts the Subsonic `ping` endpoint automatically, before the logic layer
   decides whether to show a login form. The logic layer only sees a
   success/failure result — it never reads or writes credentials itself.
+- The same ownership shape applies to clearing credentials: `SubsonicClient.
+  logout()` is the only way to clear stored Bandcamp credentials, and it's a
+  thin wrapper over `SubsonicCredentialStore.clear()` (which existed from the
+  start but had no caller until logout was added). The logic layer calls
+  `logout()` and reacts to the state change; it doesn't touch the credential
+  store directly, same as login. Currently only exposed as a **LOG OUT**
+  button on the logged-in screen for re-testing credential entry — not a
+  designed account-management feature yet.
 
 Local sync (phase 2) will need its own equivalent auth/connection check
 against our backend; it should follow the same shape (data source owns the
 check, logic layer just asks) rather than being designed as a special case.
+
+### Credential entry: QR and manual paths
+
+Bandcamp's Subsonic username and password (from `bandcamp.com/settings?pane=fan`)
+are 32-character generated strings, not human-typed ones. Because LightOS
+exposes no browser, email client, or easy self-messaging, getting these two
+strings onto the device is a real UX problem, not a minor inconvenience — see
+docs/ROADMAP.md for the decision to support two entry paths rather than one.
+
+**Manual entry.** The baseline path: a plain text-entry login form on-device.
+Slow and unpleasant given the string length, but requires no extra
+infrastructure and nothing new for Light's review process to evaluate. Always
+available as a fallback.
+
+**QR entry.** A faster path for users willing to use a second device:
+
+- A small **companion webpage** (static, no backend) where the user pastes
+  their Subsonic username and password. The page generates a QR code
+  client-side, in the browser, using a JS QR-encoding library. Nothing is
+  transmitted anywhere — the QR is just those two strings re-drawn as a
+  barcode. Not part of the phase 2 backend; this needs no server at all.
+  Lives at `web/pair.html` in this repo — kept outside `tool/`, `sdk/`,
+  `plugin/`, and `gradle/` since it's a static file to be deployed
+  somewhere (e.g. GitHub Pages), not something the Android build should
+  ever touch.
+- In light-stream, the login screen invokes the **Light SDK's camera
+  component** — the same underlying building block used by the SDK's
+  Authenticator example — to scan the code. This is our own scan screen and
+  parser, built against the raw camera component directly. It does not call
+  into or depend on the Authenticator app itself; Authenticator is only a
+  reference for how to drive the camera component, not something we
+  integrate with.
+- Our parser expects our own format (plain JSON containing the username and
+  password), not the `otpauth://` format Authenticator's own parser expects.
+  These are two independent tools sharing one SDK primitive, not two tools
+  that talk to each other.
+- **Exact QR payload shape**, as produced by `web/pair.html`, for the
+  on-device parser to match:
+  ```json
+  { "username": "<32-char subsonic username>", "password": "<32-char subsonic password>" }
+  ```
+  Field names are `username` and `password` (not `user`/`pass` or anything
+  else) — if the parser is built to expect different keys, either update
+  the parser or update `web/pair.html` so the two stay in sync. No other
+  fields are present in the payload.
+- The QR encodes the actual login credentials in plain text, not a rotating
+  secret (contrast with TOTP/2FA-style QR codes, which encode a seed used to
+  generate a new code on each use rather than a fixed one). Anyone who
+  captures the code image has the underlying Bandcamp login, so the companion
+  page should carry a clear warning not to screenshot or share it, and should
+  not cache or persist what the user pastes in.
+
+Both paths land in the same place: the Subsonic client's existing
+Keystore-backed credential storage (see above). The entry method only affects
+how the two strings arrive on-device, not how they're stored afterward.
 
 ## Why local files aren't a simple "point at a folder" feature
 
