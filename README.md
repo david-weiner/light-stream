@@ -8,9 +8,9 @@ Light's own design principles: no infinite feeds, no social features, no clutter
 
 ## Status
 
-**Phase 1 in progress: Bandcamp streaming.** Development environment is set up;
-implementation has not started yet. See [docs/ROADMAP.md](docs/ROADMAP.md) for the
-current sprint.
+**Phase 1 in progress: Bandcamp streaming.** The app shell boots and Subsonic
+login (Bandcamp Fan Settings credentials, Keystore-encrypted local storage) is
+working end-to-end. See [docs/ROADMAP.md](docs/ROADMAP.md) for what's next.
 
 ## What this app does
 

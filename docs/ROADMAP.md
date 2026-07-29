@@ -3,8 +3,8 @@
 ## Phase 1 — Bandcamp streaming
 
 - [x] Environment set up (fork, GitHub Desktop, SDK syncing)
-- [ ] Basic app shell running in emulator (`HomeScreen` boots)
-- [ ] Subsonic login flow
+- [x] Basic app shell running in emulator (`HomeScreen` boots)
+- [x] Subsonic login flow
 - [ ] Fetch and display collection (artists → albums → tracks)
 - [ ] Playback: play/pause/skip, basic queue
 - [ ] Search within collection
@@ -34,13 +34,24 @@ real backend, not just app changes. See docs/ARCHITECTURE.md for why.
 - Formal open-source license selection, ahead of submitting for Light's
   approval process (required for community tools)
 
-## Current sprint
+## Current sprint — done
 
 **Goal: get a minimal app shell running and a successful Subsonic login.**
 
-- [ ] `HomeScreen` displays a login form (Bandcamp Subsonic username/password
-      or app-specific credentials, per Bandcamp's Fan Settings flow)
-- [ ] On submit, call Subsonic `ping` endpoint to confirm credentials work
-- [ ] Display success/failure state — nothing fancier yet
+- [x] On launch, Subsonic client checks for stored credentials (Android
+      Keystore-backed encrypted storage) and attempts `ping` automatically
+      — see docs/ARCHITECTURE.md for the credential storage/ownership design
+- [x] `HomeScreen` displays a login form (Bandcamp Subsonic username/password
+      or app-specific credentials, per Bandcamp's Fan Settings flow) only if
+      no stored credentials exist, or a stored login attempt fails
+- [x] On submit, call Subsonic `ping` endpoint to confirm credentials work,
+      then store them via the Subsonic client
+- [x] Display success/failure state — nothing fancier yet
 
-Everything else in Phase 1 is backlog until this is working end-to-end.
+Implemented in `tool/src/main/kotlin/com/thelightphone/sample/subsonic/`
+(`SubsonicClient`, `SubsonicApi`, `SubsonicCredentialStore` +
+`SubsonicKeystore`/`SubsonicCredentialCipher` for the Keystore-backed
+encryption) and `HomeScreen.kt`. Verified end-to-end in an emulator against
+real Bandcamp Fan Settings credentials.
+
+Next up from the Phase 1 list above: fetching and displaying the collection.

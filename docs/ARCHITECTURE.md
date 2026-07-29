@@ -38,6 +38,34 @@ that interface is completely different per source:
   private storage on the phone, then get read locally — same shape as Light's
   own built-in Music Tool, just running on our infrastructure instead of theirs.
 
+### Credential storage and ownership
+
+Each data source owns its own authentication state — the logic layer never
+touches credential storage directly, it only asks a data source "are we
+logged in?" and reacts to yes/no. This keeps the same "logic layer doesn't
+care which source it's talking to" principle intact for login/auth, not just
+for library data.
+
+For the Subsonic client specifically:
+
+- Bandcamp credentials are stored using **Android's Keystore-backed encrypted
+  storage**, scoped to our app's own private sandbox. This is standard
+  per-app Android storage — LightOS runs as a full OS (an Android fork), not
+  as a sandbox-within-an-app, so our tool is sandboxed the same way any
+  Android app is, and system-level LightOS services (permissions, push,
+  background jobs) aren't involved in this at all.
+- The Light SDK's own **Authenticator example app** demonstrates this exact
+  pattern (Keystore-backed encrypted storage) and is a useful reference when
+  implementing this.
+- On app launch, the Subsonic client checks for stored credentials and
+  attempts the Subsonic `ping` endpoint automatically, before the logic layer
+  decides whether to show a login form. The logic layer only sees a
+  success/failure result — it never reads or writes credentials itself.
+
+Local sync (phase 2) will need its own equivalent auth/connection check
+against our backend; it should follow the same shape (data source owns the
+check, logic layer just asks) rather than being designed as a special case.
+
 ## Why local files aren't a simple "point at a folder" feature
 
 LightOS does not expose Android's standard file-picker/storage layer to tools,

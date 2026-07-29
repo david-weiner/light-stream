@@ -1,14 +1,11 @@
 package com.thelightphone.sample
 
-import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -16,50 +13,109 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewModelScope
 import com.thelightphone.sdk.InitialScreen
-import com.thelightphone.sdk.LightFileShare
 import com.thelightphone.sdk.LightScreen
 import com.thelightphone.sdk.LightViewModel
 import com.thelightphone.sdk.SealedLightActivity
-import com.thelightphone.sdk.SimpleLightScreen
-import com.thelightphone.sdk.callRemoteServiceMethod
-import com.thelightphone.sdk.ui.LightIcon
-import com.thelightphone.sdk.ui.LightIcons
+import com.thelightphone.sdk.rememberKeyboardOptions
+import com.thelightphone.sdk.ui.LightBarButton
+import com.thelightphone.sdk.ui.LightBottomBar
+import com.thelightphone.sdk.ui.LightTextField
+import com.thelightphone.sdk.ui.LightTextInputEditor
 import com.thelightphone.sdk.ui.LightText
 import com.thelightphone.sdk.ui.LightTextVariant
 import com.thelightphone.sdk.ui.LightTheme
 import com.thelightphone.sdk.ui.LightThemeController
 import com.thelightphone.sdk.ui.LightThemeTokens
-import com.thelightphone.sdk.ui.lightClickable
-import com.thelightphone.sdk.shared.LightServiceMethod
-import com.thelightphone.sdk.shared.error
+import com.thelightphone.sample.subsonic.SubsonicClient
+import com.thelightphone.sample.subsonic.SubsonicClientLoginResult
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+enum class EditingField { USERNAME, PASSWORD }
+
+sealed class LoginUiState {
+    data object CheckingStoredLogin : LoginUiState()
+
+    data class LoginForm(
+        val editing: EditingField? = null,
+        val username: String = "",
+        val password: String = "",
+        val errorMessage: String? = null,
+        val isSubmitting: Boolean = false,
+    ) : LoginUiState()
+
+    data class LoggedIn(val username: String) : LoginUiState()
+}
 
 class HomeScreenViewModel(
-    private val fileShare: LightFileShare
+    private val subsonicClient: SubsonicClient,
 ) : LightViewModel<Unit>() {
 
-    val ringtones = MutableStateFlow<List<String>>(emptyList())
-    val status = MutableStateFlow<String?>(null)
+    private val _state = MutableStateFlow<LoginUiState>(LoginUiState.CheckingStoredLogin)
+    val state: StateFlow<LoginUiState> = _state.asStateFlow()
 
-    override fun onScreenShow(screen: SimpleLightScreen<Unit>) {
-        super.onScreenShow(screen)
-        ringtones.value = fileShare.list("ringtones")
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = subsonicClient.checkStoredLogin()
+            withContext(Dispatchers.Main) {
+                _state.value = when (result) {
+                    is SubsonicClientLoginResult.Success -> LoginUiState.LoggedIn(result.username)
+                    SubsonicClientLoginResult.NoStoredLogin -> LoginUiState.LoginForm()
+                }
+            }
+        }
     }
 
-    fun selectRingtone(filename: String) {
-        val uri = fileShare.getUri("ringtones/$filename").toString()
-        viewModelScope.launch {
-            status.value = "Setting ringtone..."
-            val result = callRemoteServiceMethod(
-                LightServiceMethod.SetRingtone,
-                LightServiceMethod.SetRingtone.Request(type = 1, uri = uri)
-            )
-            status.value = result.error?.let {
-                Log.e("HomeScreen", "Unable to set ringtone, error code: ${it.code}")
-                "Unable to set ringtone!"
-            } ?: "Ringtone set: $filename"
+    fun beginEditingUsername() = updateForm { it.copy(editing = EditingField.USERNAME, errorMessage = null) }
+
+    fun beginEditingPassword() = updateForm { it.copy(editing = EditingField.PASSWORD, errorMessage = null) }
+
+    fun cancelEditing() = updateForm { it.copy(editing = null) }
+
+    fun commitField(field: EditingField, text: String) = updateForm { form ->
+        when (field) {
+            EditingField.USERNAME -> form.copy(username = text, editing = null)
+            EditingField.PASSWORD -> form.copy(password = text, editing = null)
         }
+    }
+
+    fun submitLogin() {
+        val form = _state.value as? LoginUiState.LoginForm ?: return
+        val username = form.username.trim()
+        val password = form.password
+        if (username.isEmpty() || password.isEmpty()) {
+            updateForm { it.copy(errorMessage = "Enter a username and password.") }
+            return
+        }
+
+        updateForm { it.copy(isSubmitting = true, errorMessage = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = subsonicClient.login(username, password)
+            withContext(Dispatchers.Main) {
+                result.fold(
+                    onSuccess = { _state.value = LoginUiState.LoggedIn(username) },
+                    onFailure = { error ->
+                        updateForm {
+                            it.copy(isSubmitting = false, errorMessage = error.message ?: "Login failed.")
+                        }
+                    },
+                )
+            }
+        }
+    }
+
+    private fun updateForm(transform: (LoginUiState.LoginForm) -> LoginUiState.LoginForm) {
+        _state.update { current -> (current as? LoginUiState.LoginForm)?.let(transform) ?: current }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        subsonicClient.close()
     }
 }
 
@@ -70,67 +126,131 @@ class HomeScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, HomeSc
         get() = HomeScreenViewModel::class.java
 
     override fun createViewModel(): HomeScreenViewModel {
-        return HomeScreenViewModel(lightContext.fileShare)
+        return HomeScreenViewModel(SubsonicClient(lightContext.dataStore))
     }
 
     @Composable
     override fun Content() {
-        val ringtones by viewModel.ringtones.collectAsState()
-        val status by viewModel.status.collectAsState()
+        val state by viewModel.state.collectAsState()
         val themeColors by LightThemeController.colors.collectAsState()
+        val keyboardOptionsFlow = rememberKeyboardOptions()
 
         LightTheme(colors = themeColors) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(LightThemeTokens.colors.background)
-                    .padding(32.dp)
-            ) {
-                LightText(
-                    text = "Ringtones",
-                    variant = LightTextVariant.Heading,
-                    modifier = Modifier.padding(bottom = 16.dp),
-                )
-
-                Row(modifier = Modifier.padding(bottom = 24.dp)) {
-                    LightIcon(
-                        icon = LightIcons.SETTINGS,
+            when (val mode = state) {
+                is LoginUiState.CheckingStoredLogin -> {
+                    Column(
                         modifier = Modifier
-                            .padding(end = 16.dp)
-                            .lightClickable { LightThemeController.toggle() },
-                    )
-                    LightIcon(icon = LightIcons.CALL, modifier = Modifier.padding(end = 16.dp))
-                    LightIcon(icon = LightIcons.SEARCH, modifier = Modifier.padding(end = 16.dp))
-                    LightIcon(icon = LightIcons.TOGGLE_STATE_ON)
+                            .fillMaxSize()
+                            .background(LightThemeTokens.colors.background)
+                            .padding(32.dp),
+                    ) {
+                        LightText(
+                            text = "Light Stream",
+                            variant = LightTextVariant.Heading,
+                            modifier = Modifier.padding(bottom = 16.dp),
+                        )
+                        LightText(
+                            text = "Checking stored login…",
+                            variant = LightTextVariant.Copy,
+                            lighten = true,
+                        )
+                    }
                 }
 
-                status?.let {
-                    LightText(
-                        text = it,
-                        variant = LightTextVariant.Detail,
-                        lighten = true,
-                        modifier = Modifier.padding(bottom = 16.dp),
-                    )
-                }
-
-                if (ringtones.isEmpty()) {
-                    LightText(
-                        text = "No ringtones found.",
-                        variant = LightTextVariant.Copy,
-                        lighten = true,
-                    )
-                } else {
-                    LazyColumn {
-                        items(ringtones) { filename ->
-                            LightText(
-                                text = filename,
-                                variant = LightTextVariant.Copy,
+                is LoginUiState.LoginForm -> {
+                    val editingField = mode.editing
+                    if (editingField != null) {
+                        val title = if (editingField == EditingField.USERNAME) "Username" else "Password"
+                        val initialText = if (editingField == EditingField.USERNAME) mode.username else mode.password
+                        val fieldState = rememberTextFieldState(initialText)
+                        LightTextInputEditor(
+                            title = title,
+                            state = fieldState,
+                            onSubmit = { text -> viewModel.commitField(editingField, text.toString()) },
+                            onBack = viewModel::cancelEditing,
+                            keyboardOptionsFlow = keyboardOptionsFlow,
+                            singleLine = true,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(LightThemeTokens.colors.background),
+                        ) {
+                            Column(
                                 modifier = Modifier
+                                    .weight(1f)
                                     .fillMaxWidth()
-                                    .lightClickable { viewModel.selectRingtone(filename) }
-                                    .padding(vertical = 12.dp),
+                                    .padding(32.dp),
+                            ) {
+                                LightText(
+                                    text = "Light Stream",
+                                    variant = LightTextVariant.Heading,
+                                    modifier = Modifier.padding(bottom = 16.dp),
+                                )
+                                LightText(
+                                    text = "Log in with your Bandcamp Fan Settings streaming username and password.",
+                                    variant = LightTextVariant.Detail,
+                                    lighten = true,
+                                    modifier = Modifier.padding(bottom = 24.dp),
+                                )
+                                LightTextField(
+                                    label = "Username",
+                                    value = mode.username,
+                                    placeholder = "Bandcamp username",
+                                    onClick = viewModel::beginEditingUsername,
+                                    modifier = Modifier.padding(bottom = 16.dp),
+                                )
+                                LightTextField(
+                                    label = "Password",
+                                    value = "•".repeat(mode.password.length),
+                                    placeholder = "Bandcamp password",
+                                    onClick = viewModel::beginEditingPassword,
+                                    modifier = Modifier.padding(bottom = 16.dp),
+                                )
+                                val status = when {
+                                    mode.errorMessage != null -> mode.errorMessage
+                                    mode.isSubmitting -> "Logging in…"
+                                    else -> null
+                                }
+                                status?.let {
+                                    LightText(
+                                        text = it,
+                                        variant = LightTextVariant.Detail,
+                                        lighten = true,
+                                        modifier = Modifier.padding(top = 8.dp),
+                                    )
+                                }
+                            }
+
+                            LightBottomBar(
+                                items = listOf(
+                                    null,
+                                    LightBarButton.Text(text = "LOG IN", onClick = viewModel::submitLogin),
+                                    null,
+                                ),
                             )
                         }
+                    }
+                }
+
+                is LoginUiState.LoggedIn -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(LightThemeTokens.colors.background)
+                            .padding(32.dp),
+                    ) {
+                        LightText(
+                            text = "Light Stream",
+                            variant = LightTextVariant.Heading,
+                            modifier = Modifier.padding(bottom = 16.dp),
+                        )
+                        LightText(
+                            text = "Logged in as ${mode.username}",
+                            variant = LightTextVariant.Copy,
+                        )
                     }
                 }
             }
