@@ -148,3 +148,8 @@ yet.
 - No Google Play Services on-device
 - Restricted/allowlisted third-party libraries
 - No finished distribution pipeline as of this writing
+- Bandcamp's Subsonic collection endpoints (`getArtists`/`getIndexes`/
+  `getMusicFolders`) currently 500 when called from the app specifically
+  (not from curl, not from other tooling) — external, beta-API-side issue,
+  not something in our control. See docs/ROADMAP.md ("Currently blocked:
+  Bandcamp's collection API 500s from the app") for the full diagnosis.

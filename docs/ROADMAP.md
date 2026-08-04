@@ -6,7 +6,8 @@
 - [x] Basic app shell running in emulator (`HomeScreen` boots)
 - [x] Subsonic login flow
 - [x] Credential entry: offer both QR and manual paths (see below)
-- [ ] Fetch and display collection (artists → albums → tracks)
+- [x] Fetch and display collection (artists → albums → tracks) — implemented,
+      currently blocked end-to-end by an upstream Bandcamp beta issue (see below)
 - [ ] Playback: play/pause/skip, basic queue
 - [ ] Search within collection
 - [ ] Playlists: view, create, edit (synced back to Bandcamp)
@@ -106,4 +107,86 @@ screen gets a **LOG OUT** button in its bottom bar to trigger it. No UI
 currently surfaces this as an account-management feature — it's a thin
 affordance for development/testing, not a designed "settings" flow.
 
-Next up from the Phase 1 list above: fetching and displaying the collection.
+## Fetch and display collection — done
+
+Added `getArtists`/`getArtist`/`getAlbum` to `SubsonicApi` (sharing the salt/token
+auth-query building that `ping` already used) and three matching methods on
+`SubsonicClient` — `getArtists()`, `getAlbums(artistId)`, `getTracks(albumId)`
+— each loading stored credentials internally and mapping Subsonic's DTOs into
+the `Artist`/`Album`/`Track` shapes from docs/DATA_SCHEMA.md (new
+`com.thelightphone.sample.library` package). `Artist.albumIds` and
+`Album.trackIds` are left empty for now — Subsonic's list-level endpoints
+don't return child IDs eagerly, so those only get populated by the more
+detailed fetch that lazily happens on navigation, which the current
+screens don't need.
+
+Three new screens (`ArtistsScreen` → `AlbumsScreen` → `TracksScreen`), each a
+`LightScreen` with its own `SubsonicClient` instance and a small
+Loading/Loaded/Error `ViewModel`, following the same `navigateTo` +
+`LightTopBar`/`LightScrollView` pattern as the SDK's Authenticator example.
+Reached from a new **LIBRARY** button next to **LOG OUT** on `HomeScreen`'s
+logged-in state. Track rows are the leaf of navigation — tapping one does
+nothing yet, since playback doesn't exist until the next roadmap item.
+
+Deliberately text-only, no thumbnails: the thumbnail rule and monochrome
+styling from docs/DESIGN.md are scoped to the separate "Design pass" roadmap
+item below, and DESIGN.md flags that Bandcamp album art may need a fallback
+fetch worth handling in its own pass rather than half-done here.
+
+### Currently blocked: Bandcamp's collection API 500s from the app (not curl)
+
+`getArtists` (and `getIndexes`/`getMusicFolders` — every endpoint beyond
+`ping`) returns `HTTP 500` with an empty body when called from the app,
+100% reproducible, while the identical request (same credentials, same
+salt/token auth, same query params) succeeds from `curl` every time —
+verified over 20+ consecutive curl calls with zero failures. `ping` itself
+works fine from the app.
+
+One permanent change survived the diagnosis: `SubsonicApi.ensureSuccess()`
+now includes response headers in the exception message it throws on a
+non-2xx status, not just the truncated body — cheap, generically useful for
+any future "why did this Subsonic call fail" without needing to reach for
+adb again. Everything else added purely for this investigation (a
+request/response-logging OkHttp interceptor, a forced HTTP/1.1 config, a
+custom `User-Agent`) was reverted since none of it changed the outcome.
+
+Ruled out via that temporary interceptor, comparing the app's actual
+wire-level request/response against matched curl requests at each step:
+
+- Auth style (plain `p=` vs salted `t=`/`s=` token) — not it, both use token
+- HTTP/2 vs HTTP/1.1 — forced HTTP/1.1 client-side, still 500s
+- `User-Agent` (Ktor's default `ktor-client` vs a custom identifying string)
+  — set an explicit UA, still 500s
+- `Accept-Encoding: gzip` — tested with/without, not it
+- Request headers generally — a network-level interceptor confirmed the
+  app's final wire request (`Host`, `Connection`, `Accept-Encoding`,
+  `User-Agent`, `Accept`) is byte-identical in shape to what curl sends
+- IPv6 — `bandcamp.com` has no `AAAA` record, not reachable either way
+- Call sequencing (`ping` immediately before the collection call) — curl
+  reproduces this sequence fine too
+- Random backend flakiness — 20/20 curl calls succeeded back-to-back, so
+  it isn't that
+- TLS version/cipher suite — both negotiate `TLS 1.3` /
+  `TLS_AES_128_GCM_SHA256`, identical
+
+A packet capture (see conversation history, not preserved in-repo) confirmed
+the TLS **ClientHello** fingerprints genuinely differ between curl (LibreSSL,
+49 legacy cipher suites, 7 extensions) and the app (BoringSSL/Android, 15
+modern cipher suites, 13 extensions including `padding`,
+`psk_key_exchange_modes`, `session_ticket`). That's the last remaining
+variable — everything else is proven identical — but it's not possible to
+confirm the *exact* trigger (a specific extension, ClientHello byte length,
+or deliberate client fingerprint allowlisting on Bandcamp's very new beta —
+their own announcement names only three "supported" clients) without
+Bandcamp-side visibility we don't have. Not attempting to spoof or mimic a
+different TLS fingerprint to get past this — that would mean working around
+whatever access control or bug is actually in place, deliberate or not.
+
+**Not a bug in this codebase** — the Subsonic client implementation is
+correct per spec and works via `ping`; this is external and out of our
+control pending either Bandcamp's beta stabilizing or a response from their
+side. Revisit this before starting playback, since playback needs track
+data from the same blocked endpoints.
+
+Next up from the Phase 1 list above: playback (play/pause/skip, basic queue)
+— blocked on the above until collection fetching actually works end-to-end.

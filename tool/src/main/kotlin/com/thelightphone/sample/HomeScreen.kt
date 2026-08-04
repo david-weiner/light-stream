@@ -357,9 +357,11 @@ class HomeScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, HomeSc
 
                         LightBottomBar(
                             items = listOf(
-                                null,
+                                LightBarButton.Text(
+                                    text = "LIBRARY",
+                                    onClick = { navigateTo(screenFactory = { ArtistsScreen(it) }) },
+                                ),
                                 LightBarButton.Text(text = "LOG OUT", onClick = viewModel::logout),
-                                null,
                             ),
                         )
                     }
