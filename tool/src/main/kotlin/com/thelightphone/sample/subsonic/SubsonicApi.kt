@@ -17,9 +17,13 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-private const val SUBSONIC_BASE_URL = "https://bandcamp.com/api/subsonic/rest"
-private const val SUBSONIC_API_VERSION = "1.16.1"
-private const val SUBSONIC_CLIENT_NAME = "light-stream"
+// Spike diagnostic (spike/bandcamp-500-http-stack): widened these three from `private` to
+// `internal` and gave authQuery/randomSalt/md5Hex below the same treatment, purely so
+// SubsonicSpikeHarness can reuse this exact salt/token/URL logic instead of duplicating it.
+// Revert to `private` if this branch's diagnostic code is ever kept past the spike.
+internal const val SUBSONIC_BASE_URL = "https://bandcamp.com/api/subsonic/rest"
+internal const val SUBSONIC_API_VERSION = "1.16.1"
+internal const val SUBSONIC_CLIENT_NAME = "light-stream"
 
 @Serializable
 internal data class SubsonicPingResponseWrapper(
@@ -189,14 +193,14 @@ internal class SubsonicApi {
         client.close()
     }
 
-    private fun authQuery(username: String, password: String): String {
+    internal fun authQuery(username: String, password: String, clientName: String = SUBSONIC_CLIENT_NAME): String {
         val salt = randomSalt()
         val token = md5Hex(password + salt)
         return "u=${URLEncoder.encode(username, UTF_8.name())}" +
             "&t=$token" +
             "&s=$salt" +
             "&v=$SUBSONIC_API_VERSION" +
-            "&c=$SUBSONIC_CLIENT_NAME" +
+            "&c=$clientName" +
             "&f=json"
     }
 
@@ -218,13 +222,13 @@ internal class SubsonicApi {
     }
 }
 
-private fun randomSalt(length: Int = 12): String {
+internal fun randomSalt(length: Int = 12): String {
     val bytes = ByteArray(length)
     SecureRandom().nextBytes(bytes)
     return bytes.joinToString("") { "%02x".format(it) }.take(length)
 }
 
-private fun md5Hex(input: String): String {
+internal fun md5Hex(input: String): String {
     val digest = MessageDigest.getInstance("MD5").digest(input.toByteArray(UTF_8))
     return digest.joinToString("") { "%02x".format(it) }
 }
