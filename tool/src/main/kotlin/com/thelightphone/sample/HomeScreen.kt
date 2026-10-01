@@ -12,7 +12,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewModelScope
-import com.thelightphone.sdk.InitialScreen
 import com.thelightphone.sdk.LightScreen
 import com.thelightphone.sdk.LightViewModel
 import com.thelightphone.sdk.SealedLightActivity
@@ -157,7 +156,9 @@ class HomeScreenViewModel(
     }
 }
 
-@InitialScreen
+// Spike diagnostic only (spike/bandcamp-500-http-stack): @InitialScreen temporarily moved to
+// SpikeMatrixScreen so the app launches straight into the HTTP-stack matrix harness. HomeScreen
+// itself is otherwise unmodified. Restore this annotation before merging/reverting the spike.
 class HomeScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, HomeScreenViewModel>(sealedActivity) {
 
     override val viewModelClass: Class<HomeScreenViewModel>

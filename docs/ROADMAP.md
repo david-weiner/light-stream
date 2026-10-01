@@ -8,7 +8,9 @@
 - [x] Credential entry: offer both QR and manual paths (see below)
 - [x] Fetch and display collection (artists → albums → tracks) — implemented,
       currently blocked end-to-end by an upstream Bandcamp beta issue (see below)
-- [ ] Playback: play/pause/skip, basic queue
+- [ ] Playback: play/pause/skip, basic queue — **being built against local
+      files first** (see "Pivot: playback via local files" below), Bandcamp
+      streaming plugs in once unblocked
 - [ ] Search within collection
 - [ ] Playlists: view, create, edit (synced back to Bandcamp)
 - [ ] Design pass matching docs/DESIGN.md (monochrome, thumbnail rule)
@@ -188,5 +190,65 @@ control pending either Bandcamp's beta stabilizing or a response from their
 side. Revisit this before starting playback, since playback needs track
 data from the same blocked endpoints.
 
-Next up from the Phase 1 list above: playback (play/pause/skip, basic queue)
-— blocked on the above until collection fetching actually works end-to-end.
+### Spike results (2026-08-28/29): HTTP stack and client name ruled out
+
+Ran a 4-cell diagnostic matrix on branch `spike/bandcamp-500-http-stack`
+(full write-up in `SPIKE_FINDINGS.md` on that branch): Ktor/OkHttp vs raw
+OkHttp, crossed with `c=light-stream` vs `c=Tempus` (the client name of
+Tempus, a native Android Subsonic client verified from source to work
+against Bandcamp). **All four cells returned the identical 500-with-empty-
+body.** Conclusions:
+
+- Ktor's request construction is not the problem (raw OkHttp fails too, with
+  a byte-identical query string).
+- Bandcamp is not allowlisting by client name (at least, `Tempus` fares no
+  better than `light-stream`).
+- The only remaining untested variable is **emulator vs real hardware** —
+  every test to date has run in the emulator.
+
+### Hardware test: deferred by choice
+
+A real Light Phone III is available and Light permits ADB sideloading, but
+the setup cost (enabling the Android layer + ADB on LightOS) is high
+relative to the modest odds of a different result — a real device uses the
+same BoringSSL TLS stack as the emulator, so if Bandcamp is fingerprinting
+TLS, hardware should 500 identically. The test remains the correct *next
+diagnostic* whenever it becomes cheap (e.g. once Light's dashboard
+Developer Mode ships); a ready-to-run handoff exists as
+`TASK_2_HARDWARE_TEST_HANDOFF.md` and the spike branch keeps the harness.
+If hardware also fails, remaining moves are external: an issue on
+`eddyizm/tempus` asking the maintainer, and a full bug report to Bandcamp.
+
+Also evaluated and rejected (2026-08-28): forking one of the known-working
+Bandcamp clients (Submariner/macOS, Feishin/Electron, Gelly/Rust,
+Nocturne/Python, Tempus/Android-Java) and porting it to LightOS. Only
+Tempus is even Android, and it's Java + traditional Android UI — the Light
+SDK requires Kotlin/Compose/MVVM, so a fork would mean rewriting the entire
+UI layer to inherit a networking layer we've now proven behaves identically
+to ours. Borrowing ideas: yes. Forking: no.
+
+### Pivot: playback via local files (decided 2026-08-28)
+
+Rather than leave playback hostage to Bandcamp's beta, build the playback
+engine now against **local MP3 files pushed into the app's private storage
+via the emulator** (`adb push` to the app sandbox — trivial in the
+emulator, no device setup needed). The playback/queue logic is
+source-agnostic by design (see docs/ARCHITECTURE.md), so Bandcamp
+streaming plugs into the finished player once the 500s are resolved.
+`androidx.media3` is on the Light SDK's dependency allowlist and is the
+intended playback engine.
+
+This is *not* Phase 2 pulled forward: no upload backend, no sync, no user-
+facing file management. It's a dev-mode data source that exists so playback
+can be built and tested. A possible follow-on (Task 4, unscheduled) is an
+on-device Wi-Fi upload page — the app serving a small local web page for
+dropping files in over the home network (Ktor server libraries are
+allowlisted) — which would double as a dry run for Phase 2's upload flow.
+
+Task handoffs for next session: `TASK_3_PLAYBACK_HANDOFF.md` (playback
+engine + local dev source), `TASK_4_WIFI_UPLOAD_HANDOFF.md` (optional
+follow-on).
+
+**Reminder:** none of this changes distribution — until Light's dashboard
+ships, ADB sideloading is still the only way onto real hardware, emulator
+remains the dev environment.

@@ -37,6 +37,14 @@ that interface is completely different per source:
   files to via a web dashboard we build. Tracks sync down into the app's own
   private storage on the phone, then get read locally — same shape as Light's
   own built-in Music Tool, just running on our infrastructure instead of theirs.
+- *Local dev source (interim, phase 1):* reads MP3s from the app's private
+  storage, populated by `adb push` in the emulator. Exists so the playback
+  engine can be built while Bandcamp's collection endpoints are blocked (see
+  docs/ROADMAP.md, "Pivot: playback via local files"). Deliberately minimal —
+  no upload flow, no sync state, not user-facing. It is, however, the seed of
+  the phase 2 local sync client's "read tracks from private storage" half, so
+  it should implement the same data-source interface properly rather than
+  being a hack in the playback code.
 
 ### Credential storage and ownership
 
@@ -151,5 +159,8 @@ yet.
 - Bandcamp's Subsonic collection endpoints (`getArtists`/`getIndexes`/
   `getMusicFolders`) currently 500 when called from the app specifically
   (not from curl, not from other tooling) — external, beta-API-side issue,
-  not something in our control. See docs/ROADMAP.md ("Currently blocked:
-  Bandcamp's collection API 500s from the app") for the full diagnosis.
+  not something in our control. A diagnostic spike has since ruled out the
+  HTTP client stack (Ktor vs raw OkHttp) and the `c=` client name; the only
+  untested variable is emulator vs real hardware, and the hardware test is
+  deferred by choice. See docs/ROADMAP.md ("Currently blocked" and the
+  sections following it) and `SPIKE_FINDINGS.md` on the spike branch.
