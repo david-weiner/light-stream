@@ -1,16 +1,26 @@
 # light-stream
 
+> **Status: paused (30 September 2026).** Not abandoned in anger, just no longer
+> needed. Other music apps for the Light Phone III now cover the same ground,
+> including Bandcamp and Subsonic support. See [docs/RETROSPECTIVE.md](docs/RETROSPECTIVE.md)
+> for what we learned, and what to try first if this is ever picked back up.
+
 A minimal music player for the Light Phone III. Streams a Bandcamp collection via
 the Subsonic API, with local file support planned for a later phase.
 
 Built as a "tool" for [LightOS](https://github.com/lightphone/light-sdk), following
 Light's own design principles: no infinite feeds, no social features, no clutter.
 
-## Status
+## Where things stood when work stopped
 
-**Phase 1 in progress: Bandcamp streaming.** The app shell boots and Subsonic
-login (Bandcamp Fan Settings credentials, Keystore-encrypted local storage) is
-working end-to-end. See [docs/ROADMAP.md](docs/ROADMAP.md) for what's next.
+- **Working:** app shell, Subsonic login (manual entry and QR via `web/pair.html`),
+  Keystore-encrypted credential storage, logout.
+- **Built but blocked:** the library screens (artists, albums, tracks). Bandcamp's
+  Subsonic API returned HTTP 500 with an empty body to our app, though not to curl.
+- **Unresolved:** the cause. The leading theory is the HTTP engine (see the
+  retrospective). We never ran the test that would confirm it.
+- **Not started or not verified:** see [docs/ROADMAP.md](docs/ROADMAP.md) for the
+  exact state of playback and local-file work.
 
 ## What this app does
 
@@ -30,11 +40,12 @@ working end-to-end. See [docs/ROADMAP.md](docs/ROADMAP.md) for what's next.
 
 | Doc | Purpose |
 |---|---|
+| [docs/RETROSPECTIVE.md](docs/RETROSPECTIVE.md) | What we learned, and how to resume |
 | [docs/SETUP.md](docs/SETUP.md) | Getting the dev environment running |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the app is structured, and known platform constraints |
 | [docs/DESIGN.md](docs/DESIGN.md) | Look and feel rules |
 | [docs/DATA_SCHEMA.md](docs/DATA_SCHEMA.md) | Data models used across both music sources |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Phase breakdown and current sprint |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Phase breakdown and state at pause |
 
 ## Bug tracking
 
